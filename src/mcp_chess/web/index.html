@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MCP Chess</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #ffffff; --text: #1d1d1f; --muted: #6b6b70; --border: #e2e0db;
+    --light: #eeeed2; --dark: #769656; --sel: #f6f669cc; --last: #cdd26a99; --check: #e5484d;
+    --accent: #2f6fd6; --good: #2e9e5b; --inacc: #c9a227; --mist: #e0822a; --blun: #d33b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161618; --panel: #1f1f22; --text: #ececee; --muted: #9a9aa2; --border: #2f2f34;
+            --light: #c8c9b0; --dark: #5f7f45; --accent: #6aa0ff; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  header a { color: inherit; text-decoration: none; font-weight: 650; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+  h2 { font-size: 16px; margin: 0 0 10px; }
+  button { font: inherit; padding: 7px 12px; border-radius: 7px; border: 1px solid var(--border);
+           background: var(--panel); color: var(--text); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .45; cursor: default; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  code, pre { font: 13px/1.4 ui-monospace, "Cascadia Code", Consolas, monospace; }
+  pre { background: var(--bg); border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px; overflow-x: auto; margin: 6px 0 0; white-space: pre-wrap; word-break: break-all; }
+  table { width: 100%; border-collapse: collapse; }
+  td, th { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--border); font-size: 14px; }
+  th { color: var(--muted); font-weight: 500; }
+  a { color: var(--accent); }
+  .muted { color: var(--muted); }
+
+  .game { display: grid; grid-template-columns: minmax(0, 560px) minmax(260px, 1fr); gap: 16px; align-items: start; }
+  @media (max-width: 820px) { .game { grid-template-columns: 1fr; } }
+  .boardwrap { display: flex; gap: 8px; }
+  .evalbar { width: 14px; border-radius: 4px; overflow: hidden; background: #2b2b2b; position: relative; flex: none; display: none; }
+  .evalbar .w { position: absolute; bottom: 0; left: 0; right: 0; background: #f2f2f2; transition: height .4s; }
+  .board { flex: 1; aspect-ratio: 1; display: grid; grid-template: repeat(8, 1fr) / repeat(8, 1fr);
+           border-radius: 6px; overflow: hidden; user-select: none; container-type: inline-size; }
+  .sq { position: relative; display: flex; align-items: center; justify-content: center; }
+  .sq.l { background: var(--light); } .sq.d { background: var(--dark); }
+  .sq.last::before, .sq.sel::before { content: ""; position: absolute; inset: 0; background: var(--last); }
+  .sq.sel::before { background: var(--sel); }
+  .sq.check { background: radial-gradient(circle, var(--check) 20%, transparent 75%), var(--light); }
+  .sq.d.check { background: radial-gradient(circle, var(--check) 20%, transparent 75%), var(--dark); }
+  .sq.tgt::after { content: ""; position: absolute; width: 30%; height: 30%; border-radius: 50%; background: #0003; }
+  .sq.tgt.cap::after { width: 86%; height: 86%; background: none; border: 5px solid #0003; }
+  .sq .coord { position: absolute; font-size: 10px; font-weight: 600; opacity: .7; color: #0009; }
+  .sq .coord.f { right: 3px; bottom: 1px; } .sq .coord.r { left: 3px; top: 1px; }
+  .pc { position: relative; z-index: 1; font-size: 9.5cqw; line-height: 1; cursor: default; }
+  .pc.w { color: #fff; -webkit-text-stroke: 1.6px #222; paint-order: stroke fill; }
+  .pc.b { color: #1a1a1a; -webkit-text-stroke: 0.6px #000; }
+  .clickable .pc { cursor: pointer; }
+
+  .player { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; }
+  .player .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 1px solid #888; margin-right: 7px; vertical-align: -1px; }
+  .player.tomove { font-weight: 650; }
+  .status { font-weight: 600; margin: 4px 0 8px; }
+  .moves { max-height: 300px; overflow-y: auto; display: grid; grid-template-columns: 36px 1fr 1fr; gap: 2px 6px; font-size: 14px; }
+  .moves .n { color: var(--muted); }
+  .mv { cursor: default; padding: 0 3px; border-radius: 4px; }
+  .mv.cur { background: var(--sel); color: #111; }
+  .j-inaccuracy { color: var(--inacc); } .j-mistake { color: var(--mist); } .j-blunder { color: var(--blun); }
+  .promo { position: fixed; inset: 0; background: #0006; display: none; align-items: center; justify-content: center; z-index: 9; }
+  .promo div { background: var(--panel); border-radius: 10px; padding: 12px; display: flex; gap: 8px; }
+  .promo button { font-size: 40px; width: 64px; height: 64px; padding: 0; }
+  .hide { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <a href="/">♞ MCP Chess</a>
+  <span class="sub" id="sub"></span>
+</header>
+<main id="app"></main>
+<div class="promo" id="promo"><div></div></div>
+
+<script>
+const GLYPH = { k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟︎" };
+const VALUES = { p: 1, n: 3, b: 3, r: 5, q: 9 };
+const params = new URLSearchParams(location.search);
+const app = document.getElementById("app");
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+async function api(path, body) {
+  const r = await fetch(path, body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {});
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+
+/* ------------------------------------------------------------- lobby */
+async function lobby() {
+  const games = await api("/api/games");
+  const mcpUrl = location.origin + "/mcp";
+  const row = g => {
+    const p = c => `${esc(g.players[c].name)}${g.players[c].joined ? "" : " <span class=muted>(open)</span>"}`;
+    const st = g.result ? `${g.result} · ${esc(g.reason)}` : `${g.moves} plies`;
+    return `<tr><td><a href="/?game=${g.id}">${g.id}</a></td><td>${p("w")}</td><td>${p("b")}</td><td>${st}</td></tr>`;
+  };
+  app.innerHTML = `
+    <div class="card">
+      <h2>New game</h2>
+      <div class="row">
+        <button class="primary" onclick="create('human','agent')">Play white vs agent</button>
+        <button class="primary" onclick="create('agent','human')">Play black vs agent</button>
+        <button onclick="create('agent','agent')">Agent vs agent (watch)</button>
+      </div>
+      <p class="muted" style="margin:10px 0 0">An agent can also start a game itself with the <code>new_game</code> tool.</p>
+    </div>
+    <div class="card">
+      <h2>Games</h2>
+      ${games.length ? `<table><tr><th>id</th><th>white</th><th>black</th><th>status</th></tr>${games.map(row).join("")}</table>`
+                     : `<p class="muted">No games yet.</p>`}
+    </div>
+    <div class="card">
+      <h2>Connect an agent</h2>
+      <div>Claude Code:</div><pre>claude mcp add --transport http chess ${mcpUrl}</pre>
+      <div style="margin-top:8px">Any client with a JSON config:</div>
+      <pre>{ "mcpServers": { "chess": { "type": "http", "url": "${mcpUrl}" } } }</pre>
+    </div>`;
+}
+
+async function create(white, black) {
+  const r = await api("/api/games", { white, black });
+  location.href = r.seat ? `/?seat=${r.seat}` : `/?game=${r.id}`;
+}
+
+/* -------------------------------------------------------------- game */
+let G = null, sel = null, flip = false;
+
+function parseFen(fen) {
+  const b = Array(64).fill(null);
+  fen.split(" ")[0].split("/").forEach((row, i) => {
+    let f = 0;
+    for (const ch of row) {
+      if (/\d/.test(ch)) f += +ch;
+      else { b[(7 - i) * 8 + f] = ch; f++; }
+    }
+  });
+  return b;
+}
+const sqName = i => "abcdefgh"[i % 8] + (Math.floor(i / 8) + 1);
+const sqIdx = s => "abcdefgh".indexOf(s[0]) + 8 * (+s[1] - 1);
+
+function winChance(ev) {
+  if (!ev) return null;
+  if (ev.mate != null) return ev.mate === 0 ? (ev.winner === "w" ? 1 : -1) : Math.sign(ev.mate);
+  return 2 / (1 + Math.exp(-0.00368208 * ev.cp)) - 1;
+}
+function evalText(ev) {
+  if (!ev) return "";
+  if (ev.mate != null) return ev.mate === 0 ? "#" : (ev.mate > 0 ? "#" : "#-") + Math.abs(ev.mate);
+  return (ev.cp > 0 ? "+" : "") + (ev.cp / 100).toFixed(1);
+}
+
+async function gameLoop() {
+  const seat = params.get("seat"), id = params.get("game");
+  const base = seat ? `/api/game?seat=${encodeURIComponent(seat)}` : `/api/game?id=${encodeURIComponent(id)}`;
+  try { G = await api(base); } catch (e) { app.innerHTML = `<div class="card">${esc(e.message)} · <a href="/">back</a></div>`; return; }
+  flip = G.you === "b";
+  renderGame();
+  for (;;) {
+    try {
+      const g = await api(`${base}&since=${G.version}`);
+      if (g.version !== G.version) { G = g; renderGame(); }
+    } catch (e) { await new Promise(r => setTimeout(r, 2000)); }
+  }
+}
+
+function renderGame() {
+  const g = G;
+  document.title = `${g.id} · MCP Chess`;
+  document.getElementById("sub").textContent = g.you ? `game ${g.id} · you play ${g.you === "w" ? "white" : "black"}` : `game ${g.id} · spectating`;
+  if (!document.getElementById("board")) {
+    app.innerHTML = `
+      <div class="game">
+        <div>
+          <div class="player" id="ptop"></div>
+          <div class="boardwrap"><div class="evalbar" id="evalbar"><div class="w" id="evalw"></div></div><div class="board" id="board"></div></div>
+          <div class="player" id="pbot"></div>
+        </div>
+        <div>
+          <div class="card">
+            <div class="status" id="status"></div>
+            <div id="evalline" class="muted"></div>
+            <div class="row" id="controls" style="margin-top:8px"></div>
+          </div>
+          <div class="card"><h2>Moves</h2><div class="moves" id="moves"></div></div>
+          <div class="card" id="joincard"></div>
+          <div class="card"><div class="row"><h2 style="margin:0;flex:1">PGN</h2><button onclick="navigator.clipboard.writeText(G.pgn)">Copy</button></div><pre id="pgn"></pre></div>
+        </div>
+      </div>`;
+  }
+  renderBoard();
+  renderSide();
+}
+
+function renderBoard() {
+  const g = G, b = parseFen(g.fen), el = document.getElementById("board");
+  const last = g.ucis.length ? g.ucis[g.ucis.length - 1] : null;
+  const lastSq = last ? [sqIdx(last.slice(0, 2)), sqIdx(last.slice(2, 4))] : [];
+  const kingInCheck = g.check ? b.indexOf(g.turn === "w" ? "K" : "k") : -1;
+  const targets = sel != null ? (g.legal || []).filter(u => sqIdx(u) === sel).map(u => sqIdx(u.slice(2, 4))) : [];
+  el.classList.toggle("clickable", !!g.legal);
+  let html = "";
+  for (let row = 0; row < 8; row++) for (let col = 0; col < 8; col++) {
+    const rank = flip ? row : 7 - row, file = flip ? 7 - col : col, i = rank * 8 + file, p = b[i];
+    const cls = ["sq", (rank + file) % 2 ? "l" : "d"];
+    if (lastSq.includes(i)) cls.push("last");
+    if (i === sel) cls.push("sel");
+    if (i === kingInCheck) cls.push("check");
+    if (targets.includes(i)) cls.push("tgt", p ? "cap" : "");
+    let inner = "";
+    if (row === 7) inner += `<span class="coord f">${"abcdefgh"[file]}</span>`;
+    if (col === 0) inner += `<span class="coord r">${rank + 1}</span>`;
+    if (p) inner += `<span class="pc ${p === p.toUpperCase() ? "w" : "b"}">${GLYPH[p.toLowerCase()]}</span>`;
+    html += `<div class="${cls.join(" ")}" data-i="${i}">${inner}</div>`;
+  }
+  el.innerHTML = html;
+  el.onclick = e => { const sq = e.target.closest(".sq"); if (sq) clickSquare(+sq.dataset.i); };
+}
+
+function clickSquare(i) {
+  const g = G;
+  if (!g.legal) return;
+  if (sel != null) {
+    const cands = g.legal.filter(u => sqIdx(u) === sel && sqIdx(u.slice(2, 4)) === i);
+    if (cands.length === 1) return send(cands[0]);
+    if (cands.length > 1) return pickPromotion(cands);
+  }
+  sel = g.legal.some(u => sqIdx(u) === i) && sel !== i ? i : null;
+  renderBoard();
+}
+
+function pickPromotion(cands) {
+  const box = document.getElementById("promo"), inner = box.firstElementChild, white = G.turn === "w";
+  inner.innerHTML = "qrbn".split("").map(p => `<button data-u="${cands[0].slice(0, 4) + p}"><span class="pc ${white ? "w" : "b"}" style="font-size:40px">${GLYPH[p]}</span></button>`).join("");
+  box.style.display = "flex";
+  box.onclick = e => { const b = e.target.closest("button"); box.style.display = "none"; if (b) send(b.dataset.u); };
+}
+
+async function send(uci) {
+  sel = null;
+  try { await api("/api/move", { seat: params.get("seat"), move: uci }); }
+  catch (e) { alert(e.message); }
+}
+async function act(action) {
+  if (action === "resign" && !confirm("Resign this game?")) return;
+  try { await api("/api/move", { seat: params.get("seat"), action }); } catch (e) { alert(e.message); }
+}
+
+function capturedLine(color) {
+  // pieces of `color` missing from the board, i.e. captured by the opponent
+  const b = parseFen(G.fen), start = { p: 8, n: 2, b: 2, r: 2, q: 1 }, out = [];
+  for (const k of "qrbnp") {
+    const on = b.filter(p => p === (color === "w" ? k.toUpperCase() : k)).length;
+    for (let i = on; i < start[k]; i++) out.push(GLYPH[k]);
+  }
+  return out.join("");
+}
+
+function renderSide() {
+  const g = G, ply = g.sans.length;
+  const pl = c => {
+    const p = g.players[c], diff = (g.material[c] - g.material[c === "w" ? "b" : "w"]);
+    const caps = capturedLine(c === "w" ? "b" : "w");
+    return `<span><span class="dot" style="background:${c === "w" ? "#fff" : "#222"}"></span>${esc(p.name)}${p.joined ? "" : " <span class=muted>(waiting to join)</span>"}${g.you === c ? " <span class=muted>(you)</span>" : ""}</span>
+            <span class="muted">${caps}${diff > 0 ? " +" + diff : ""}</span>`;
+  };
+  const top = flip ? "w" : "b", bot = flip ? "b" : "w";
+  for (const [id, c] of [["ptop", top], ["pbot", bot]]) {
+    const el = document.getElementById(id);
+    el.innerHTML = pl(c);
+    el.classList.toggle("tomove", !g.result && g.turn === c);
+  }
+
+  let status;
+  if (g.result) status = `${g.result} — ${g.reason}`;
+  else {
+    const side = g.turn === "w" ? "White" : "Black";
+    status = g.you === g.turn ? "Your move" : `${side} to move`;
+    if (g.check) status += " · check";
+  }
+  document.getElementById("status").textContent = status;
+
+  // engine eval (only for spectated agent games, or after the game ends)
+  const ev = g.evals[String(ply)], bar = document.getElementById("evalbar");
+  const hasEval = Object.keys(g.evals).length > 0;
+  bar.style.display = hasEval ? "block" : "none";
+  if (ev) {
+    const wc = winChance(ev);
+    document.getElementById("evalw").style.height = `${50 + 50 * wc}%`;
+    bar.style.transform = flip ? "rotate(180deg)" : "";
+  }
+  document.getElementById("evalline").textContent = !g.engine ? "" :
+    !hasEval ? (g.result ? "" : "Engine eval hidden while a human plays.") :
+    ev ? `${g.engine}: ${evalText(ev)} (depth ${ev.depth})${ev.best_san && !g.result ? " · best " + ev.best_san : ""}` : `${g.engine}: thinking…`;
+
+  // controls for a human seat
+  const ctl = document.getElementById("controls");
+  if (g.you && !g.result) {
+    const offerFromOpp = g.draw_offer && g.draw_offer !== g.you;
+    ctl.innerHTML = `
+      <button onclick="act('resign')">Resign</button>
+      ${offerFromOpp ? `<button class="primary" onclick="act('accept_draw')">Accept draw</button><button onclick="act('decline_draw')">Decline</button>`
+                     : `<button onclick="act('offer_draw')" ${g.draw_offer === g.you ? "disabled" : ""}>${g.draw_offer === g.you ? "Draw offered" : "Offer draw"}</button>`}
+      ${g.claimable && g.turn === g.you ? `<button onclick="act('claim_draw')">Claim draw (${esc(g.claimable)})</button>` : ""}
+      <button onclick="flip=!flip;renderBoard();renderSide()">Flip</button>`;
+  } else {
+    ctl.innerHTML = `<button onclick="flip=!flip;renderBoard();renderSide()">Flip board</button>${g.draw_offer && !g.result ? `<span class="muted">${g.draw_offer === "w" ? "White" : "Black"} offers a draw</span>` : ""}`;
+  }
+
+  // moves with engine judgements
+  const startBlack = g.pgn.includes('[FEN "') && / b /.test(g.pgn.match(/\[FEN "([^"]+)"/)[1]);
+  const mark = { inaccuracy: "?!", mistake: "?", blunder: "??" };
+  let html = "", n = 1;
+  const cells = [];
+  if (startBlack) cells.push(null);
+  g.sans.forEach((san, i) => cells.push({ san, i }));
+  const fm = startBlack ? +g.pgn.match(/\[FEN "[^"]+ (\d+)"/)[1] : 1;
+  for (let k = 0; k < cells.length; k += 2) {
+    html += `<span class="n">${fm + k / 2}.</span>`;
+    for (const c of [cells[k], cells[k + 1]]) {
+      if (!c) { html += "<span></span>"; continue; }
+      const e = g.evals[String(c.i + 1)], prev = g.evals[String(c.i)], j = e && e.judgement;
+      const tip = e ? `eval ${evalText(e)}${j && prev && prev.best_san ? " · best was " + prev.best_san : ""}` : "";
+      html += `<span class="mv ${c.i === ply - 1 ? "cur" : ""} ${j ? "j-" + j : ""}" title="${esc(tip)}">${esc(c.san)}${j ? mark[j] : ""}</span>`;
+    }
+  }
+  const mv = document.getElementById("moves");
+  mv.innerHTML = html || `<span class="muted" style="grid-column:1/-1">No moves yet.</span>`;
+  mv.scrollTop = mv.scrollHeight;
+
+  // how to bring agents in
+  const open = ["w", "b"].filter(c => g.players[c].kind === "agent" && !g.players[c].joined);
+  const jc = document.getElementById("joincard");
+  jc.classList.toggle("hide", !open.length || !!g.result);
+  if (open.length) jc.innerHTML = `<h2>Waiting for ${open.length > 1 ? "agents" : "an agent"}</h2>
+      <div>Tell ${open.length > 1 ? "each agent" : "your agent"}:</div><pre>Join chess game ${g.id} with the join_game tool and play it.</pre>`;
+  document.getElementById("pgn").textContent = g.pgn;
+}
+
+if (params.get("seat") || params.get("game")) gameLoop(); else lobby();
+</script>
+</body>
+</html>

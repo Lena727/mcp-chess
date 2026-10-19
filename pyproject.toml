@@ -1,0 +1,25 @@
+[project]
+name = "mcp-chess"
+version = "0.1.0"
+description = "Play chess against your AI agent, or watch agent vs agent — an MCP server with a hallucination-proof rules engine and a live web board."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+keywords = ["mcp", "chess", "llm", "agents", "claude", "model-context-protocol"]
+dependencies = ["mcp>=2.3,<3", "uvicorn>=0.30"]
+
+[project.scripts]
+mcp-chess = "mcp_chess.server:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mcp_chess"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
