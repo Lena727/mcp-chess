@@ -27,6 +27,8 @@
            background: var(--panel); color: var(--text); cursor: pointer; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   button:disabled { opacity: .45; cursor: default; }
+  button.danger { background: var(--blun); border-color: var(--blun); color: #fff; }
+  .error { color: var(--blun); margin-top: 6px; font-size: 14px; }
   .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   code, pre { font: 13px/1.4 ui-monospace, "Cascadia Code", Consolas, monospace; }
   pre { background: var(--bg); border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px; overflow-x: auto; margin: 6px 0 0; white-space: pre-wrap; word-break: break-all; }
@@ -190,6 +192,7 @@ function renderGame() {
           <div class="card">
             <div class="status" id="status"></div>
             <div id="evalline" class="muted"></div>
+            <div id="error" class="error hide"></div>
             <div class="row" id="controls" style="margin-top:8px"></div>
           </div>
           <div class="card"><h2>Moves</h2><div class="moves" id="moves"></div></div>
@@ -246,14 +249,30 @@ function pickPromotion(cands) {
   box.onclick = e => { const b = e.target.closest("button"); box.style.display = "none"; if (b) send(b.dataset.u); };
 }
 
+// No alert()/confirm(): embedded and some sandboxed browsers silently block them.
+function showError(msg) {
+  const el = document.getElementById("error");
+  el.textContent = msg || "";
+  el.classList.toggle("hide", !msg);
+}
 async function send(uci) {
   sel = null;
+  showError("");
   try { await api("/api/move", { seat: params.get("seat"), move: uci }); }
-  catch (e) { alert(e.message); }
+  catch (e) { showError(e.message); renderBoard(); }
 }
-async function act(action) {
-  if (action === "resign" && !confirm("Resign this game?")) return;
-  try { await api("/api/move", { seat: params.get("seat"), action }); } catch (e) { alert(e.message); }
+let resignArmed = false;
+async function act(action, btn) {
+  if (action === "resign" && !resignArmed) {
+    resignArmed = true;  // first click arms, second click within 4 s resigns
+    btn.textContent = "Click again to resign";
+    btn.classList.add("danger");
+    setTimeout(() => { resignArmed = false; renderSide(); }, 4000);
+    return;
+  }
+  resignArmed = false;
+  showError("");
+  try { await api("/api/move", { seat: params.get("seat"), action }); } catch (e) { showError(e.message); }
 }
 
 function capturedLine(color) {
@@ -308,7 +327,7 @@ function renderSide() {
   if (g.you && !g.result) {
     const offerFromOpp = g.draw_offer && g.draw_offer !== g.you;
     ctl.innerHTML = `
-      <button onclick="act('resign')">Resign</button>
+      <button onclick="act('resign', this)" class="${resignArmed ? "danger" : ""}">${resignArmed ? "Click again to resign" : "Resign"}</button>
       ${offerFromOpp ? `<button class="primary" onclick="act('accept_draw')">Accept draw</button><button onclick="act('decline_draw')">Decline</button>`
                      : `<button onclick="act('offer_draw')" ${g.draw_offer === g.you ? "disabled" : ""}>${g.draw_offer === g.you ? "Draw offered" : "Offer draw"}</button>`}
       ${g.claimable && g.turn === g.you ? `<button onclick="act('claim_draw')">Claim draw (${esc(g.claimable)})</button>` : ""}
