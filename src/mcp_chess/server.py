@@ -246,6 +246,7 @@ def main() -> None:
     p.add_argument("--no-engine", action="store_true", help="disable analysis even if stockfish is on PATH")
     p.add_argument("--depth", type=int, default=14, help="analysis depth (default 14)")
     p.add_argument("--wait", type=float, default=50.0, help="max seconds a tool call waits for the opponent")
+    p.add_argument("--no-browser", action="store_true", help="don't open the board in a browser on start")
     args = p.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -254,11 +255,21 @@ def main() -> None:
     path = None if args.no_engine else find_engine(args.stockfish)
     if path:
         analyzer = Analyzer(UciEngine(path, depth=args.depth))
-    print(f"mcp-chess  board: {BASE_URL}/   mcp: {BASE_URL}/mcp   analysis: {path or 'off'}", flush=True)
+    print(
+        f"mcp-chess  board: {BASE_URL}/   mcp: {BASE_URL}/mcp   analysis: {path or 'off'}\n"
+        f"connect Claude Code:  claude mcp add --transport http chess {BASE_URL}/mcp\n"
+        "press Ctrl+C to stop",
+        flush=True,
+    )
 
     import uvicorn
 
     app = mcp.streamable_http_app(host=args.host)
+    if not args.no_browser:
+        import threading
+        import webbrowser
+
+        threading.Timer(1.0, webbrowser.open, [f"{BASE_URL}/"]).start()
     try:
         uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
     finally:

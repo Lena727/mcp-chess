@@ -15,12 +15,17 @@ move out of turn, or play for its opponent.
 
 ## Quick start
 
+**One command** (needs [uv](https://docs.astral.sh/uv/)). It downloads, starts the server and opens the board in your browser:
+
 ```bash
-git clone https://github.com/<you>/mcp-chess && cd mcp-chess
-uv run mcp-chess            # board: http://127.0.0.1:8765   mcp: http://127.0.0.1:8765/mcp
+uvx --from git+https://github.com/Lena727/mcp-chess mcp-chess
 ```
 
-Connect your agent (streamable HTTP):
+**Or one click:** download the repo ([zip](https://github.com/Lena727/mcp-chess/archive/refs/heads/main.zip)) and double-click `start.bat` (Windows), or run `./start.sh` (macOS/Linux). If `uv` is missing, the launcher installs it first.
+
+The board runs at http://127.0.0.1:8765 and the MCP endpoint at http://127.0.0.1:8765/mcp.
+
+Connect your agent (streamable HTTP, a one-time setup):
 
 ```bash
 # Claude Code
@@ -97,7 +102,7 @@ src/mcp_chess/server.py    MCP tools + JSON API + CLI
 src/mcp_chess/web/         single-file web board (no build step)
 ```
 
-Options: `mcp-chess --host 127.0.0.1 --port 8765 --stockfish PATH --depth 14 --wait 50 --no-engine`.
+Options: `mcp-chess --host 127.0.0.1 --port 8765 --stockfish PATH --depth 14 --wait 50 --no-engine --no-browser`.
 `--wait` is the longest time a tool call blocks waiting for the opponent. Lower it if your MCP client times out sooner.
 
 ## Roadmap
