@@ -29,6 +29,11 @@
   button:disabled { opacity: .45; cursor: default; }
   button.danger { background: var(--blun); border-color: var(--blun); color: #fff; }
   .error { color: var(--blun); margin-top: 6px; font-size: 14px; }
+  textarea { width: 100%; font: 13px/1.4 ui-monospace, Consolas, monospace; background: var(--bg); color: var(--text);
+             border: 1px solid var(--border); border-radius: 7px; padding: 8px; resize: vertical; }
+  .mv { cursor: pointer; }
+  .graph { width: 100%; height: 70px; display: block; margin-top: 8px; cursor: pointer; }
+  .summary { display: grid; grid-template-columns: auto repeat(3, 1fr); gap: 2px 10px; font-size: 13px; margin-top: 8px; }
   .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   code, pre { font: 13px/1.4 ui-monospace, "Cascadia Code", Consolas, monospace; }
   pre { background: var(--bg); border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px; overflow-x: auto; margin: 6px 0 0; white-space: pre-wrap; word-break: break-all; }
@@ -122,6 +127,14 @@ async function lobby() {
                      : `<p class="muted">No games yet.</p>`}
     </div>
     <div class="card">
+      <h2>Review a game</h2>
+      <textarea id="pgnin" rows="4" placeholder="Paste a PGN here…"></textarea>
+      <div class="row" style="margin-top:8px">
+        <button onclick="importPgn()">Analyze</button>
+        <span class="muted" id="importmsg"></span>
+      </div>
+    </div>
+    <div class="card">
       <h2>Connect an agent</h2>
       <div>Claude Code:</div><pre>claude mcp add --transport http chess ${mcpUrl}</pre>
       <div style="margin-top:8px">Any client with a JSON config:</div>
@@ -134,8 +147,35 @@ async function create(white, black) {
   location.href = r.seat ? `/?seat=${r.seat}` : `/?game=${r.id}`;
 }
 
+async function importPgn() {
+  const msg = document.getElementById("importmsg");
+  try {
+    const r = await api("/api/games", { pgn: document.getElementById("pgnin").value });
+    location.href = `/?game=${r.id}`;
+  } catch (e) { msg.textContent = e.message; }
+}
+
 /* -------------------------------------------------------------- game */
 let G = null, sel = null, flip = false;
+let view = null;  // ply being reviewed, null = live position
+const shownPly = () => (view == null ? G.sans.length : view);
+const fenAt = p => (G.fens && G.fens[p]) || G.fen;
+function setView(p) {
+  view = p == null || p >= G.sans.length ? null : Math.max(0, p);
+  sel = null;
+  renderBoard();
+  renderSide();
+}
+document.addEventListener("keydown", e => {
+  if (!G || e.target.closest("textarea, input")) return;
+  const p = shownPly();
+  if (e.key === "ArrowLeft") setView(p - 1);
+  else if (e.key === "ArrowRight") setView(p + 1);
+  else if (e.key === "Home") setView(0);
+  else if (e.key === "End") setView(null);
+  else return;
+  e.preventDefault();
+});
 
 function parseFen(fen) {
   const b = Array(64).fill(null);
@@ -195,7 +235,15 @@ function renderGame() {
             <div id="error" class="error hide"></div>
             <div class="row" id="controls" style="margin-top:8px"></div>
           </div>
-          <div class="card"><h2>Moves</h2><div class="moves" id="moves"></div></div>
+          <div class="card">
+            <div class="row"><h2 style="margin:0;flex:1">Moves</h2>
+              <button onclick="setView(0)" title="Start">⏮</button><button onclick="setView(shownPly()-1)" title="Back">◀</button>
+              <button onclick="setView(shownPly()+1)" title="Forward">▶</button><button onclick="setView(null)" title="Live">⏭</button></div>
+            <div class="muted" id="viewing" style="font-size:13px;margin:4px 0"></div>
+            <div class="moves" id="moves"></div>
+            <div id="graph"></div>
+            <div id="summary"></div>
+          </div>
           <div class="card" id="joincard"></div>
           <div class="card"><div class="row"><h2 style="margin:0;flex:1">PGN</h2><button onclick="navigator.clipboard.writeText(G.pgn)">Copy</button></div><pre id="pgn"></pre></div>
         </div>
@@ -206,12 +254,13 @@ function renderGame() {
 }
 
 function renderBoard() {
-  const g = G, b = parseFen(g.fen), el = document.getElementById("board");
-  const last = g.ucis.length ? g.ucis[g.ucis.length - 1] : null;
+  const g = G, ply = shownPly(), b = parseFen(fenAt(ply)), el = document.getElementById("board");
+  const last = ply > 0 ? g.ucis[ply - 1] : null;
   const lastSq = last ? [sqIdx(last.slice(0, 2)), sqIdx(last.slice(2, 4))] : [];
-  const kingInCheck = g.check ? b.indexOf(g.turn === "w" ? "K" : "k") : -1;
+  const checked = view == null ? g.check : /\+|#/.test(g.sans[ply - 1] || "");
+  const kingInCheck = checked ? b.indexOf(ply % 2 === (fenAt(0).split(" ")[1] === "w" ? 0 : 1) ? "K" : "k") : -1;
   const targets = sel != null ? (g.legal || []).filter(u => sqIdx(u) === sel).map(u => sqIdx(u.slice(2, 4))) : [];
-  el.classList.toggle("clickable", !!g.legal);
+  el.classList.toggle("clickable", !!g.legal && view == null);
   let html = "";
   for (let row = 0; row < 8; row++) for (let col = 0; col < 8; col++) {
     const rank = flip ? row : 7 - row, file = flip ? 7 - col : col, i = rank * 8 + file, p = b[i];
@@ -232,6 +281,7 @@ function renderBoard() {
 
 function clickSquare(i) {
   const g = G;
+  if (view != null) return setView(null);  // clicking a past position jumps back to live
   if (!g.legal) return;
   if (sel != null) {
     const cands = g.legal.filter(u => sqIdx(u) === sel && sqIdx(u.slice(2, 4)) === i);
@@ -275,21 +325,63 @@ async function act(action, btn) {
   try { await api("/api/move", { seat: params.get("seat"), action }); } catch (e) { showError(e.message); }
 }
 
-function capturedLine(color) {
+function capturedLine(b, color) {
   // pieces of `color` missing from the board, i.e. captured by the opponent
-  const b = parseFen(G.fen), start = { p: 8, n: 2, b: 2, r: 2, q: 1 }, out = [];
+  const start = { p: 8, n: 2, b: 2, r: 2, q: 1 }, out = [];
   for (const k of "qrbnp") {
     const on = b.filter(p => p === (color === "w" ? k.toUpperCase() : k)).length;
     for (let i = on; i < start[k]; i++) out.push(GLYPH[k]);
   }
   return out.join("");
 }
+function material(b, color) {
+  return b.reduce((s, p) => s + (p && (p === p.toUpperCase()) === (color === "w") ? VALUES[p.toLowerCase()] || 0 : 0), 0);
+}
+
+function evalGraph(g, ply) {
+  const n = g.sans.length;
+  if (!n || !Object.keys(g.evals).length) return "";
+  let pts = "", lastX = 0;
+  for (let i = 0; i <= n; i++) {
+    const wc = winChance(g.evals[String(i)]);
+    if (wc == null) continue;
+    pts += ` ${i},${(50 - 48 * wc).toFixed(1)}`;
+    lastX = i;
+  }
+  const dots = g.sans.map((_, i) => {
+    const e = g.evals[String(i + 1)], j = e && e.judgement;
+    if (!j || j === "inaccuracy") return "";
+    return `<circle cx="${i + 1}" cy="${(50 - 48 * winChance(e)).toFixed(1)}" r="${Math.max(n / 120, 0.5)}" fill="var(--${j === "blunder" ? "blun" : "mist"})" vector-effect="non-scaling-stroke"/>`;
+  }).join("");
+  return `<svg class="graph" viewBox="0 0 ${n} 100" preserveAspectRatio="none" onclick="graphClick(event, ${n})">
+      <rect width="${n}" height="100" fill="#2b2b2b"/>
+      <polygon points="0,100${pts} ${lastX},100" fill="#e9e9e9"/>
+      <line x1="0" x2="${n}" y1="50" y2="50" stroke="#888" stroke-width="0.6" vector-effect="non-scaling-stroke"/>
+      <line x1="${ply}" x2="${ply}" y1="0" y2="100" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+      ${dots}
+    </svg>`;
+}
+function graphClick(e, n) {
+  const r = e.currentTarget.getBoundingClientRect();
+  setView(Math.round(((e.clientX - r.left) / r.width) * n));
+}
+
+function errorSummary(g) {
+  const startW = fenAt(0).split(" ")[1] === "w", count = { w: {}, b: {} };
+  g.sans.forEach((_, i) => {
+    const e = g.evals[String(i + 1)], j = e && e.judgement;
+    if (j) { const c = (i % 2 === 0) === startW ? "w" : "b"; count[c][j] = (count[c][j] || 0) + 1; }
+  });
+  const cell = (c, j) => `<span class="j-${j}">${count[c][j] || 0}</span>`;
+  return `<div class="summary"><span></span><span class="muted" title="inaccuracies">?!</span><span class="muted" title="mistakes">?</span><span class="muted" title="blunders">??</span>
+    ${["w", "b"].map(c => `<span>${esc(g.players[c].name)}</span>${cell(c, "inaccuracy")}${cell(c, "mistake")}${cell(c, "blunder")}`).join("")}</div>`;
+}
 
 function renderSide() {
-  const g = G, ply = g.sans.length;
+  const g = G, ply = shownPly(), board = parseFen(fenAt(ply));
   const pl = c => {
-    const p = g.players[c], diff = (g.material[c] - g.material[c === "w" ? "b" : "w"]);
-    const caps = capturedLine(c === "w" ? "b" : "w");
+    const p = g.players[c], diff = material(board, c) - material(board, c === "w" ? "b" : "w");
+    const caps = capturedLine(board, c === "w" ? "b" : "w");
     return `<span><span class="dot" style="background:${c === "w" ? "#fff" : "#222"}"></span>${esc(p.name)}${p.joined ? "" : " <span class=muted>(waiting to join)</span>"}${g.you === c ? " <span class=muted>(you)</span>" : ""}</span>
             <span class="muted">${caps}${diff > 0 ? " +" + diff : ""}</span>`;
   };
@@ -318,9 +410,17 @@ function renderSide() {
     document.getElementById("evalw").style.height = `${50 + 50 * wc}%`;
     bar.style.transform = flip ? "rotate(180deg)" : "";
   }
-  document.getElementById("evalline").textContent = !g.engine ? "" :
+  let line = !g.engine ? "" :
     !hasEval ? (g.result ? "" : "Engine eval hidden while a human plays.") :
-    ev ? `${g.engine}: ${evalText(ev)} (depth ${ev.depth})${ev.best_san && !g.result ? " · best " + ev.best_san : ""}` : `${g.engine}: thinking…`;
+    ev ? `${g.engine}: ${evalText(ev)} (depth ${ev.depth})${ev.best_san && (view != null || !g.result) ? " · best here " + ev.best_san : ""}` : `${g.engine}: thinking…`;
+  if (view != null && ply > 0) {
+    const prev = g.evals[String(ply - 1)], j = ev && ev.judgement;
+    const played = `${Math.floor((ply - 1) / 2) + 1}${(ply - 1) % 2 ? "..." : "."}${g.sans[ply - 1]}`;
+    line = `${played}${j ? " — " + j : ""}${j && prev && prev.best_san ? ", best was " + prev.best_san : ""}\n${line}`;
+  }
+  const evl = document.getElementById("evalline");
+  evl.textContent = line;
+  evl.style.whiteSpace = "pre-line";
 
   // controls for a human seat
   const ctl = document.getElementById("controls");
@@ -350,12 +450,16 @@ function renderSide() {
       if (!c) { html += "<span></span>"; continue; }
       const e = g.evals[String(c.i + 1)], prev = g.evals[String(c.i)], j = e && e.judgement;
       const tip = e ? `eval ${evalText(e)}${j && prev && prev.best_san ? " · best was " + prev.best_san : ""}` : "";
-      html += `<span class="mv ${c.i === ply - 1 ? "cur" : ""} ${j ? "j-" + j : ""}" title="${esc(tip)}">${esc(c.san)}${j ? mark[j] : ""}</span>`;
+      html += `<span class="mv ${c.i === ply - 1 ? "cur" : ""} ${j ? "j-" + j : ""}" title="${esc(tip)}" onclick="setView(${c.i + 1})">${esc(c.san)}${j ? mark[j] : ""}</span>`;
     }
   }
   const mv = document.getElementById("moves");
   mv.innerHTML = html || `<span class="muted" style="grid-column:1/-1">No moves yet.</span>`;
-  mv.scrollTop = mv.scrollHeight;
+  if (view == null) mv.scrollTop = mv.scrollHeight;
+  else mv.querySelector(".cur")?.scrollIntoView({ block: "nearest" });
+  document.getElementById("graph").innerHTML = evalGraph(g, ply);
+  document.getElementById("summary").innerHTML = Object.keys(g.evals).length && g.sans.length ? errorSummary(g) : "";
+  document.getElementById("viewing").textContent = view == null ? "" : `viewing move ${Math.ceil(ply / 2) || 0} · ← → keys`;
 
   // how to bring agents in
   const open = ["w", "b"].filter(c => g.players[c].kind === "agent" && !g.players[c].joined);

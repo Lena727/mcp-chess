@@ -539,6 +539,32 @@ class Game:
         self.result, self.reason = result, reason
         self._legal = []
 
+    @classmethod
+    def from_pgn(cls, text: str) -> tuple["Game", dict[str, str]]:
+        """Replay a single-game PGN (main line only). Returns the game and its headers.
+        A decisive result without mate is recorded as resignation (or the Termination tag)."""
+        headers = dict(re.findall(r'^\s*\[(\w+)\s+"([^"]*)"\]\s*$', text, re.M))
+        body = re.sub(r"^\s*\[.*\]\s*$", "", text, flags=re.M)
+        body = re.sub(r"\{[^}]*\}|;[^\n]*", " ", body)  # comments
+        while re.search(r"\([^()]*\)", body):  # variations, innermost first
+            body = re.sub(r"\([^()]*\)", " ", body)
+        game = cls(headers["FEN"]) if headers.get("FEN") else cls()
+        result = None
+        for tok in body.split():
+            tok = re.sub(r"^\d+\.(\.\.)?", "", tok)  # "12." / "12..." / "12.e4"
+            if not tok or tok.startswith("$"):
+                continue
+            if tok in ("1-0", "0-1", "1/2-1/2", "*"):
+                result = tok
+                break
+            game.play(tok)
+        result = result if result in ("1-0", "0-1", "1/2-1/2") else headers.get("Result")
+        if result in ("1-0", "0-1", "1/2-1/2") and not game.result:
+            loser = "white" if result == "0-1" else "black"
+            reason = headers.get("Termination") or ("agreement" if result == "1/2-1/2" else f"{loser} resigned")
+            game.finish(result, reason)
+        return game, headers
+
     def pgn(self, headers: dict[str, str] | None = None) -> str:
         hdr = {"Event": "MCP Chess", "Site": "local", "White": "?", "Black": "?", "Result": self.result or "*"}
         hdr.update(headers or {})

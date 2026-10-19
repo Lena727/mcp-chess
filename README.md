@@ -52,6 +52,15 @@ Open two agent sessions (two terminals, two different models, whatever you like)
 
 Then watch at `http://127.0.0.1:8765/?game=g1`. For live evaluation, install [Stockfish](https://stockfishchess.org/download/) and put it on `PATH`, or run `mcp-chess --stockfish /path/to/stockfish`.
 
+### Game review
+
+Paste any PGN into **Review a game** on the home page, for example the PGN of the game you just lost to your agent. With Stockfish set up, every move is evaluated. The review then has:
+
+- click any move, or use ← / →, to step through the positions;
+- an eval graph with mistakes and blunders marked;
+- `?!` / `?` / `??` labels with the engine's better move ("13.O-O — blunder, best was Qd2");
+- a count of inaccuracies, mistakes and blunders for each player.
+
 ## Tools
 
 | tool | what it does |
@@ -109,7 +118,8 @@ Options: `mcp-chess --host 127.0.0.1 --port 8765 --stockfish PATH --depth 14 --w
 
 - [ ] save finished games as PGN files
 - [ ] clocks / time controls
-- [ ] eval graph for spectators
+- [x] eval graph and game review
+- [ ] download Stockfish automatically (`--get-stockfish`)
 - [ ] stdio transport that proxies to a running board
 
 ## License

@@ -144,6 +144,7 @@ def _match_json(match: Match, seat_key: str | None) -> dict:
         "check": pos.in_check(),
         "sans": game.sans,
         "ucis": [m.uci() for m in game.moves],
+        "fens": match.fens,
         "result": game.result,
         "reason": game.reason,
         "players": {c: {"kind": s.kind, "joined": s.joined, "name": s.label} for c, s in match.seats.items()},
@@ -191,6 +192,14 @@ async def api_games(request: Request) -> Response:
     if request.method == "GET":
         return JSONResponse(_list_json())
     body = await _body(request)
+    if body.get("pgn"):
+        if not isinstance(body["pgn"], str):
+            return JSONResponse({"error": "pgn must be a string"}, status_code=400)
+        try:
+            match = lobby.import_pgn(body["pgn"])
+        except GameError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        return JSONResponse({"id": match.id, "seat": None})
     try:
         match = lobby.create(body.get("white", "agent"), body.get("black", "agent"), body.get("fen", ""))
     except GameError as e:

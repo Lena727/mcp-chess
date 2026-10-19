@@ -93,6 +93,26 @@ class Lobby:
             self.on_move(match)
         return match
 
+    def import_pgn(self, text: str) -> Match:
+        """Load a finished (or any) game for review; both seats are closed."""
+        try:
+            game, headers = Game.from_pgn(text)
+        except (ValueError, KeyError) as e:
+            raise GameError(f"bad PGN: {e}") from None
+        match = self.create("agent", "agent", game.start_fen)
+        pos, fens = Position.from_fen(game.start_fen), [game.start_fen]
+        for mv in game.moves:
+            pos = pos.push(mv)
+            fens.append(pos.fen())
+        match.game, match.fens = game, fens
+        for color, tag in (("w", "White"), ("b", "Black")):
+            match.seats[color].joined = True
+            match.seats[color].name = headers.get(tag, "?")[:40]
+        match.bump()
+        if self.on_move:
+            self.on_move(match)
+        return match
+
     def seat(self, key: str) -> tuple[Seat, Match]:
         seat = self.seats.get((key or "").strip())
         if not seat:

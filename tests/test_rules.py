@@ -138,6 +138,19 @@ def test_bad_fen():
             Game(fen)
 
 
+def test_pgn_roundtrip_and_import():
+    g = play("e4", "c5", "Nf3", "d6", "d4", "cxd4")
+    g.finish("0-1", "white resigned")
+    g2, headers = Game.from_pgn(g.pgn({"White": "A", "Black": "B"}))
+    assert g2.sans == g.sans and g2.result == "0-1" and g2.reason == "white resigned"
+    assert headers["White"] == "A"
+    messy = '[Event "x"]\n1. e4 {best} e5 (1... c5 2. Nf3) 2. Nf3 $1 Nc6 3.Bb5 a6 *'
+    g3, _ = Game.from_pgn(messy)
+    assert g3.sans == ["e4", "e5", "Nf3", "Nc6", "Bb5", "a6"] and g3.result is None
+    with pytest.raises(IllegalMove):
+        Game.from_pgn("1. e4 e5 2. Ke3")
+
+
 def test_pgn():
     g = play("e4", "e5", "Qh5", "Nc6", "Bc4", "Nf6", "Qxf7")
     pgn = g.pgn({"White": "A", "Black": "B"})
